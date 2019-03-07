@@ -1,5 +1,5 @@
 # submarine
-A Repository of the current Eclipse project
-Currently Includes all files of the project.
-Unneeded files can be deleted later.
-Testing
+
+A repository to use before pushing to main.
+
+TestingFromAtom
