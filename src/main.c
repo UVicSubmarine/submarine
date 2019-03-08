@@ -51,10 +51,10 @@ int main(void) {
   }
 
   // General initialization stuff
-  //initControlLoopInterrupt();
+  initControlLoopTimer();
   //initPWMTimer();
 
-  initMS5837();
+  //initMS5837();
 
   while (1) {
 

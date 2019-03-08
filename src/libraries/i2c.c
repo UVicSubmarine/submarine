@@ -52,7 +52,8 @@ uint8_t i2c_write(uint8_t data)
 
 	return 0;
 }
-
+//TODO: alter this function to stop the master from holding the clock low
+// it has something to do with the interupt bit on the status register
 uint8_t i2c_read_ack(void)
 {
 
