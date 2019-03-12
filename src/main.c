@@ -54,7 +54,7 @@ int main(void) {
   initControlLoopTimer();
   //initPWMTimer();
 
-  //initMS5837();
+  initMS5837();
 
   while (1) {
 
