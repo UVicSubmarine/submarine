@@ -1,6 +1,7 @@
 #ifndef MS5837_H
 #define MS5837_H
 
-void initMS5837(void);
+uint8_t initMS5837(uint16_t* calib_data);
+uint8_t crc4(uint16_t n_prom[]);
 
 #endif

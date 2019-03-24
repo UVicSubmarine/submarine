@@ -10,12 +10,33 @@
 
 //Submarine Controller
 
+
+/* LOGISTICAL PREAMBLE */
+
 #define VERSION "v0.1"
 #define DEBUG 1 //set debug mode, enabling serial communication
+
+//breakpoint function for debugging
+void breakpoint(void){
+  if(DEBUG){
+    PORTB |= (1 << PB0);
+    printString("\n ----- \n");
+    receiveByte();
+    PORTB &= ~(1 << PB0);
+  }
+}
+
+
+/* DECALARATIONS */
+
 #define LAC_PWM_TOP 128 //top value for PWM counter
 
-//globals
+/* GLOBAL VARIABLES */
 uint8_t serial_position_setpoint = 0;
+uint16_t MS5837_calibration_data[7];
+
+
+/* INITIALIZATION FUNCTIONS */
 
 //control loop interrupt routine
 ISR(TIMER1_COMPA_vect){
@@ -26,11 +47,24 @@ ISR(TIMER1_COMPA_vect){
   } else {
     OCR0B = serial_position_setpoint;
   }
+}
+//initialize control loop timer1
 
-
+//program start function for debug mode
+void initDebug(void){
+  if(DEBUG){
+      DDRB |= (1<<PB0);
+      PORTB |= (1 << PB0);
+      initUSART();
+      printString("\n\nSubmarine Controller\n");
+      printString(VERSION);
+      printString("\nPress any key:\n");
+      receiveByte(); //wait to receive input
+      printString("Starting Program\n");
+      PORTB &= ~(1 << PB0);
+  }
 }
 
-//initialize control loop timer1
 void initControlLoopTimer(void){
   sei(); //  Enable global interrupts
   DDRB |= (1 << PB0); // Set LED as output
@@ -39,7 +73,6 @@ void initControlLoopTimer(void){
   TIMSK1 |= (1 << OCIE1A); // Enable CTC interrupt
   TCCR1B |= ((1 << CS10) | (1 << CS11)); //prescaler F_CPU/64
 }
-
 //initialize PWM on PD5 to control actuator using timer0
 void initPWMTimer(void){
   DDRD |= (1 << PD5); //PWM output pin
@@ -48,7 +81,7 @@ void initPWMTimer(void){
   OCR0A = LAC_PWM_TOP; //set the PWM frequency
   OCR0B = 0; //set duty cycle = OCR0B/OCR0A * 100%
 }
-
+//initialize the ADC to read from the potentiometer
 void initDirectControlPot(void){
   DDRD |= (0 << PD7); //set up auto/manual control switch to input
   ADMUX |= (1 << ADLAR) | (1 << REFS0)| (1 << MUX1) | (1 << MUX0); //left adjust, AVcc reference, pin PC3/ADC3
@@ -57,24 +90,18 @@ void initDirectControlPot(void){
   ADCSRA |= (1 << ADSC); //start conversions
 }
 
+/* MAIN */
+
 int main(void) {
 
-  //set up serial communications for debug mode
-  if(DEBUG){
-      initUSART();
-      printString("\n\nSubmarine Controller\n");
-      printString(VERSION);
-      printString("\nPress any key:\n");
-      receiveByte(); //wait to receive input
-      printString("Starting Program\n");
-  }
+  //initializations
+  initDebug();
+  //initControlLoopTimer();
+  //initPWMTimer();
+  initMS5837(MS5837_calibration_data);
+  //initDirectControlPot();
 
-  // General initialization stuff
-  initControlLoopTimer();
-  initPWMTimer();
-  //initMS5837();
-  initDirectControlPot();
-
+  //free-running polling loop
   while (1) {
     serial_position_setpoint = getNumber()*1.28;
   }
