@@ -27,6 +27,7 @@ void breakpoint(void){
 }
 
 
+
 /* DECALARATIONS */
 
 #define LAC_PWM_TOP 128 //top value for PWM counter
@@ -49,6 +50,19 @@ ISR(TIMER1_COMPA_vect){
   }
 }
 //initialize control loop timer1
+
+//Counter from input for the hull affect sensor
+//Temporarily will simply set the Led on or off to test if it is working
+void inputFromINT0(){
+    if (bit_is_clear(INT0,BUTTON)){//This is what it says in the manual
+        PORTB ^= (1 << 0);//LED ON
+    }
+    else{
+        PORTB ^= (1 << 1);//LED OFF
+    }
+}
+
+
 
 //program start function for debug mode
 void initDebug(void){
