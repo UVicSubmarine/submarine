@@ -19,10 +19,12 @@
 //breakpoint function for debugging
 void breakpoint(void){
   if(DEBUG){
+    cli();
     PORTB |= (1 << PB0);
     printString("\n ----- \n");
     receiveByte();
     PORTB &= ~(1 << PB0);
+    sei();
   }
 }
 
@@ -65,8 +67,8 @@ void initDebug(void){
   }
 }
 
+//calls TIMER1_COMPA_vect every second
 void initControlLoopTimer(void){
-  sei(); //  Enable global interrupts
   DDRB |= (1 << PB0); // Set LED as output
   TCCR1B |= (1 << WGM12); // Configure timer 1 for CTC mode
   OCR1A   = 15624; // Set output compare value
@@ -95,8 +97,9 @@ void initDirectControlPot(void){
 int main(void) {
 
   //initializations
+  sei(); //  Enable global interrupts
   initDebug();
-  //initControlLoopTimer();
+  initControlLoopTimer();
   //initPWMTimer();
   initMS5837(MS5837_calibration_data);
   //initDirectControlPot();
