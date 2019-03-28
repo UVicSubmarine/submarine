@@ -2,7 +2,6 @@
 #include <avr/io.h>
 #include <stdlib.h>
 #include <util/delay.h>
-#include "pinDefines.h"
 #include <avr/interrupt.h>
 #include "USART.h"
 #include "i2c.h"
@@ -15,6 +14,7 @@
 
 #define VERSION "v0.1"
 #define DEBUG 1 //set debug mode, enabling serial communication
+//#define F_CPU 8000000UL
 
 //breakpoint function for debugging
 void breakpoint(void){
@@ -32,39 +32,39 @@ void breakpoint(void){
 
 /* DECALARATIONS */
 
-#define LAC_PWM_TOP 128 //top value for PWM counter
+#define LAC_PWM_TOP 125 //top value for PWM counter
 
 /* GLOBAL VARIABLES */
 uint8_t serial_position_setpoint = 0;
 uint16_t MS5837_calibration_data[7];
 
 
-/* INITIALIZATION FUNCTIONS */
 
-//control loop interrupt routine
-ISR(TIMER1_COMPA_vect){
-   PORTB ^= (1 << 0); // Toggle the LED
+/*INTERRUPT SERVICE ROUTINES*/
 
+//control loop interrupt routine, must complete in <65ms
+ISR(TIMER2_COMPA_vect){
+  PORTB ^= (1 << PB0);
+/*
   if((PIND && PD7)){ // <<< TODO: fix so this properly evaluates PD7
     OCR0B = (ADCH >> 1); //bit shift to reduce to 0-125
   } else {
     OCR0B = serial_position_setpoint;
   }
-}
-//initialize control loop timer1
-
-//Counter from input for the hull affect sensor
-//Temporarily will simply set the Led on or off to test if it is working
-void inputFromINT0(){
-    if (bit_is_clear(INT0,BUTTON)){//This is what it says in the manual
-        PORTB ^= (1 << 0);//LED ON
-    }
-    else{
-        PORTB ^= (1 << 1);//LED OFF
-    }
+  */
 }
 
+//RPM counter interrupt
+ISR(INT0_vect){
+  printString("Counter Value: ");
+  uint16_t counter_value = (TCNT1H << 8) | (TCNT1L);
+  TCNT1H = 0;
+  TCNT1L = 0;
+  printWord(counter_value);
+  printString("\n");
+}
 
+/* INITIALIZATION FUNCTIONS */
 
 //program start function for debug mode
 void initDebug(void){
@@ -81,21 +81,22 @@ void initDebug(void){
   }
 }
 
-//calls TIMER1_COMPA_vect every second
+//initialize control loop interrupt on TIMER 2
 void initControlLoopTimer(void){
-  DDRB |= (1 << PB0); // Set LED as output
-  TCCR1B |= (1 << WGM12); // Configure timer 1 for CTC mode
-  OCR1A   = 15624; // Set output compare value
-  TIMSK1 |= (1 << OCIE1A); // Enable CTC interrupt
-  TCCR1B |= ((1 << CS10) | (1 << CS11)); //prescaler F_CPU/64
+  cli();
+  TCCR2B |= (1 << WGM22); // Configure timer 1 for CTC mode
+  OCR2A   = 255; // Set output compare value
+  TIMSK2 |= (1 << OCIE2A); // Enable CTC interrupt
+  TCCR2B |= (1 << CS22) | (1 << CS21) |(1 <<CS20); //prescaler F_CPU/1024
+  sei();
 }
-//initialize PWM on PD5 to control actuator using timer0
+//initialize actuator control PWM on TIMER 0 at 1kHz
 void initPWMTimer(void){
   DDRD |= (1 << PD5); //PWM output pin
   TCCR0A = (1 << COM0B1) | (1 << WGM01) | (1 << WGM00); //fast PWM mode
-  TCCR0B = (1 << WGM02) | (1 << CS01); //use OCRA as TOP to set frequency, prescaler F_CPU/8
-  OCR0A = LAC_PWM_TOP; //set the PWM frequency
-  OCR0B = 0; //set duty cycle = OCR0B/OCR0A * 100%
+  TCCR0B = (1 << WGM02) | (1 << CS01) | (1 << CS00); //use OCRA as TOP to set frequency, prescaler F_CPU/64
+  OCR0A = LAC_PWM_TOP; //set TOP value
+  OCR0B = 2; //set duty cycle to zero (DC = OCR0B/OCROA*100%)
 }
 //initialize the ADC to read from the potentiometer
 void initDirectControlPot(void){
@@ -104,6 +105,18 @@ void initDirectControlPot(void){
   ADCSRA |= (1 << ADATE) | (1 << ADPS1) | (1 << ADPS0); //ADC prescale /8, free-run
   ADCSRA |= (1 << ADEN); //Enable
   ADCSRA |= (1 << ADSC); //start conversions
+}
+//initialize RPM counter interrupt
+void initRPMCounter(void){
+  cli();
+  EIMSK |= (1 << INT0); //enable INT0
+  EICRA |= (1 << ISC00); //edge detect
+  sei();
+}
+//intialize RPM counter timer on TIMER 1
+void initRPMTimer(void){
+  TCCR1B = (1 << CS11) | (1 << CS10); //prescaler F_CPU/
+  TCCR1B |= (1 << WGM12) | (1 << WGM12); // Configure timer 1 for CTC mode
 }
 
 /* MAIN */
@@ -114,9 +127,12 @@ int main(void) {
   sei(); //  Enable global interrupts
   initDebug();
   initControlLoopTimer();
-  //initPWMTimer();
+  initPWMTimer();
   initMS5837(MS5837_calibration_data);
   //initDirectControlPot();
+  //initRPMTimer();
+  //initRPMCounter();
+
 
   //free-running polling loop
   while (1) {
