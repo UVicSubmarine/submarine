@@ -14,7 +14,7 @@
 
 //this function sets up the MS5837 and reads and checks it's calibration data
 //it takes an array of 7 16-bit words to return the calibration data in.
-uint8_t initMS5837(uint16_t* calib_data){
+uint8_t initMS5837(uint16_t calib_data[]){
 
   //initialize i2c (might move this to main())
   i2c_init();
@@ -39,18 +39,74 @@ uint8_t initMS5837(uint16_t* calib_data){
 
   //check CRC on calibration data
   printString("\nCRC Check: ");
+
   uint8_t crcRead = calib_data[0] >> 12;
   uint8_t crcCalculated = crc4(calib_data);
 
+
   if(crcRead == crcCalculated){
-    printString(":)\n");
+    printString("Good\n");
     return 1;
   }
 
-  printString(" :(\n");
+  printString(" Bad\n");
   return 0;
 }
 
+//MS5837 ADC conversion and read
+uint32_t conversion(uint8_t conversion_code){
+
+  i2c_start(MS5837_ADDR);
+  i2c_write(conversion_code);
+  i2c_stop();
+
+  //conversion time
+  _delay_ms(20);
+
+  //request ADC read
+  i2c_start(MS5837_ADDR);
+  i2c_write(MS5837_ADC_READ);
+  i2c_stop();
+
+  uint32_t output = 0;
+
+  //read adc
+  i2c_start(MS5837_ADDR | I2C_READ);
+  output = i2c_read_ack();
+  output = (output << 8) | i2c_read_ack();
+  output = (output << 8) | i2c_read_nack();
+  i2c_stop();
+
+  return output;
+}
+
+//reads data from MS5837 and returns depth
+uint32_t read_MS5837_depth(uint16_t C[]){
+
+  uint32_t D1 = conversion(MS5837_CONVERT_D1_8192);
+  uint32_t D2 = conversion(MS5837_CONVERT_D2_8192);
+
+
+  int32_t dT = 0;
+  int32_t T = 0;
+  int32_t P = 0;
+  int64_t SENS = 0;
+  int64_t OFF = 0;
+  int32_t SENSi = 0;
+  int32_t OFFi = 0;
+  int32_t Ti = 0;
+  int64_t OFF2 = 0;
+  int64_t SENS2 = 0;
+
+  dT = D2-(uint32_t)C[5]*256L;
+  T = 2000L+(int64_t)dT*C[6]/8388608LL;
+
+  SENS = (int64_t)C[1]*32768l+((int64_t)C[3]*dT)/256l;
+	OFF = (int64_t)C[2]*65536l+((int64_t)C[4]*dT)/128l;
+	P = (D1*SENS/(2097152l)-OFF)/(8192l)*10;
+
+  return P;
+}
 
 //CRC check on MS5837 data
 uint8_t crc4(uint16_t n_prom[]){

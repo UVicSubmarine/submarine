@@ -121,6 +121,14 @@ void printHexByte(uint8_t byte) {
   transmitByte(nibbleToHexCharacter(nibble));
 }
 
+void printBytes(int32_t n){
+  printHexByte(n >> 24);
+  printHexByte(n >> 16);
+  printHexByte(n >> 8);
+  printHexByte(n);
+  printString("\n");
+}
+
 uint8_t getNumber(void) {
   // Gets a numerical 0-255 from the serial port.
   // Converts from string to number.

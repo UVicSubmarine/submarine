@@ -28,8 +28,6 @@ void breakpoint(void){
   }
 }
 
-
-
 /* DECALARATIONS */
 
 #define LAC_PWM_TOP 125 //top value for PWM counter
@@ -42,30 +40,14 @@ uint16_t MS5837_calibration_data[7];
 
 /*INTERRUPT SERVICE ROUTINES*/
 
-//control loop interrupt routine, must complete in <65ms
-ISR(TIMER2_COMPA_vect){
-  PORTB ^= (1 << PB0);
-/*
-  if((PIND && PD7)){ // <<< TODO: fix so this properly evaluates PD7
-    OCR0B = (ADCH >> 1); //bit shift to reduce to 0-125
-  } else {
-    OCR0B = serial_position_setpoint;
-  }
-  */
-}
-
-//RPM counter interrupt
-ISR(INT0_vect){
-  printString("Counter Value: ");
-  uint16_t counter_value = (TCNT1H << 8) | (TCNT1L);
-  TCNT1H = 0;
-  TCNT1L = 0;
-  printWord(counter_value);
-  printString("\n");
+//control loop interrupt routine, called at 1Hz
+ISR(TIMER1_COMPA_vect){
+  PORTB |= (1 << PB0);
+  _delay_ms(1);
+  PORTB &= ~(1 << PB0);
 }
 
 /* INITIALIZATION FUNCTIONS */
-
 //program start function for debug mode
 void initDebug(void){
   if(DEBUG){
@@ -79,16 +61,6 @@ void initDebug(void){
       printString("Starting Program\n");
       PORTB &= ~(1 << PB0);
   }
-}
-
-//initialize control loop interrupt on TIMER 2
-void initControlLoopTimer(void){
-  cli();
-  TCCR2B |= (1 << WGM22); // Configure timer 1 for CTC mode
-  OCR2A   = 255; // Set output compare value
-  TIMSK2 |= (1 << OCIE2A); // Enable CTC interrupt
-  TCCR2B |= (1 << CS22) | (1 << CS21) |(1 <<CS20); //prescaler F_CPU/1024
-  sei();
 }
 //initialize actuator control PWM on TIMER 0 at 1kHz
 void initPWMTimer(void){
@@ -113,14 +85,17 @@ void initRPMCounter(void){
   EICRA |= (1 << ISC00); //edge detect
   sei();
 }
-//intialize RPM counter timer on TIMER 1
-void initRPMTimer(void){
-  TCCR1B = (1 << CS11) | (1 << CS10); //prescaler F_CPU/
-  TCCR1B |= (1 << WGM12) | (1 << WGM12); // Configure timer 1 for CTC mode
+//intialize contorl loop timer interrupt on TIMER 1
+void initControlLoopTimer(void){
+  cli();
+  TCCR1B |= (1 << CS12) | (0 << CS10); //prescaler F_CPU/256
+  TCCR1B |= (1 << WGM12); // Configure timer 1 for CTC mode
+  TIMSK1 |= (1 << OCIE1A); // Enable CTC interrupt
+  OCR1A = 31294; // 1 Hz with 256 prescaler (double spec value, not sure why)
+  sei();
 }
 
 /* MAIN */
-
 int main(void) {
 
   //initializations
@@ -133,10 +108,9 @@ int main(void) {
   //initRPMTimer();
   //initRPMCounter();
 
-
+  read_MS5837_depth(MS5837_calibration_data);
   //free-running polling loop
   while (1) {
-    serial_position_setpoint = getNumber()*1.28;
   }
   return 0;
 }
