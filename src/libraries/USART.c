@@ -58,6 +58,10 @@ void printString(const char myString[]) {
   }
 }
 
+void println(void){
+  transmitByte(0x0A);
+}
+
 void readString(char myString[], uint8_t maxLength) {
   char response;
   uint8_t i;
@@ -90,6 +94,19 @@ void printWord(uint16_t word) {
   transmitByte('0' + ((word / 10) % 10));                      /* Tens */
   transmitByte('0' + (word % 10));                             /* Ones */
 }
+
+void printSignedWord(int16_t word) {
+  if (word == 0){
+    printString("0");
+  } else {
+    if(word < 0){
+      word = 0 - word;
+      printString("-");
+    }
+    printByte((uint8_t)word);
+  }
+}
+
 
 void printBinaryByte(uint8_t byte) {
                        /* Prints out a byte as a series of 1's and 0's */
@@ -144,4 +161,25 @@ uint8_t getNumber(void) {
     transmitByte(thisChar);                                    /* echo */
   } while (thisChar != '\r');                     /* until type return */
   return (100 * (hundreds - '0') + 10 * (tens - '0') + ones - '0');
+}
+
+uint16_t getWord(void) {
+  // Gets a numerical 0-6... from the serial port.
+  // Converts from string to number.
+  char ten_thousands = '0';
+  char thousands = '0';
+  char hundreds = '0';
+  char tens = '0';
+  char ones = '0';
+  char thisChar = '0';
+  do {
+    ten_thousands = thousands;       /* shift over */
+    thousands = hundreds;
+    hundreds = tens;
+    tens = ones;
+    ones = thisChar;
+    thisChar = receiveByte();                   /* get a new character */
+    transmitByte(thisChar);                                    /* echo */
+  } while (thisChar != '\r');                     /* until type return */
+  return (10000 * (ten_thousands - '0') + 1000 * (thousands - '0') + 100 * (hundreds - '0') + 10 * (tens - '0') + ones - '0');
 }

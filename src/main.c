@@ -1,6 +1,7 @@
 
 #include <avr/io.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
 #include "USART.h"
@@ -32,55 +33,86 @@ void breakpoint(void){
 #define LAC_PWM_TOP 125 //top value for PWM counter
 
 /* GLOBAL VARIABLES */
-uint8_t serial_position_setpoint = 0;
 uint16_t MS5837_calibration_data[7];
+
 uint8_t status = 0; //status byte: | | | | | |M/A|HD|HU|
-uint32_t depth = 0;
-int8_t angle = 0;
+uint8_t char_code = 0;
+
+//controller variables
+uint8_t kp = 10;
+uint8_t ki = 0;
+uint8_t kd = 0;
+uint16_t depth = 500;
+uint16_t setpoint = 200;
 
 /*INTERRUPT SERVICE ROUTINES*/
-//control loop interrupt routine, called at 1Hz
+//control loop interrupt routine
 ISR(TIMER1_COMPA_vect){
   PORTB |= (1 << PB0);
-  status = ((PINB&PB2) << 2) | ((PINC&PC1) << 1) | ((PINC&PC0) << 0);
-  //if M/A bit high
-  if((status & 0x04) == 0x04){ //automatic mode
-    //TODO
-  } else if ((status & 0x07) == 0x01){ //up
-    OCR0B = 83;
-    printString("Up");
-  } else if ((status & 0x07) == 0x02){ //down
-    OCR0B = 43;
-    printString("Down");
-  } else if((status & 0x07) == 0x03){ //neutral
-    OCR0B = 63;
-    printString("Neutral");
+  //get switch status
+  status = ((PINC&0x02) << 1) | ((PINB&0x04) >> 1) | (PINC&0x01);
+
+  //low battery indicator
+  if((ADCL | ADCH << 8) < 660){ // ~11V
+    PORTD |= (1 << 4);
   } else {
-    printString("Something went wrong :(");
+    PORTD &= ~(1 << 4);
   }
-  _delay_ms(1);
+
+  //depth = 600; //read_MS5837_depth();
+
+  //automatic/manual modes
+  if((status & 0x04) == 0x04){ //automatic mode
+
+    int32_t error = setpoint - depth;
+
+    int32_t output;
+
+    if(error >= 0){
+      output = 62 + ((error*kp) >> 7);
+    } else if(1) {
+      output = 62 - (((abs(error)*kp)) >> 7);
+    }
+
+    printSignedWord(output);
+    println();
+
+    //trim output for saturation
+    /*if(output > 125){
+      output = 25;
+    } else if(output < 0){
+      output = 0;
+    }*/
+
+    printSignedWord(output);
+    println();
+
+    OCR0B = output;
+
+
+  } else if ((status & 0x07) == 0x01){ //up
+    OCR0B = 120;
+  } else if ((status & 0x07) == 0x02){ //down
+    OCR0B = 0;
+  } else if((status & 0x07) == 0x03){ //neutral
+    OCR0B = 60;
+  }
+
   PORTB &= ~(1 << PB0);
 }
 
 /* INITIALIZATION FUNCTIONS */
 //program start function for debug mode
 void initDebug(void){
-  if(DEBUG){
-      DDRB |= (1<<PB0);
-      PORTB |= (1 << PB0);
-      _delay_ms(1000);
-      PORTB &= ~(1 << PB0);
-      _delay_ms(1000);
-      PORTB |= (1 << PB0);
-      initUSART();
-      printString("\n\nSubmarine Controller\n");
-      printString(VERSION);
-      printString("\nPress any key:\n");
-      receiveByte(); //wait to receive input
-      printString("Starting Program\n");
-      PORTB &= ~(1 << PB0);
-
-  }
+    DDRB |= (1<<PB0);
+    PORTB |= (1 << PB0);
+    initUSART();
+    printString("\n\nSubmarine Controller\n");
+    printString(VERSION);
+    printString("\nPress any key:\n");
+    receiveByte(); //wait to receive input
+    printString("Starting Program\n");
+    PORTB &= ~(1 << PB0);
 }
 //initialize actuator control PWM on TIMER 0 at 1kHz
 void initPWMTimer(void){
@@ -92,8 +124,7 @@ void initPWMTimer(void){
 }
 //initialize the ADC to read from the potentiometer
 void initADC(void){
-  DDRD |= (0 << PD7); //set up auto/manual control switch to input
-  ADMUX |= (1 << ADLAR) | (1 << REFS0)| (1 << MUX1) | (1 << MUX0); //left adjust, AVcc reference, pin PC3/ADC3
+  ADMUX |= (1 << REFS0)| (1 << MUX2) | (1 << MUX1); //left adjust, AVcc reference, ADC7
   ADCSRA |= (1 << ADATE) | (1 << ADPS1) | (1 << ADPS0); //ADC prescale /8, free-run
   ADCSRA |= (1 << ADEN); //Enable
   ADCSRA |= (1 << ADSC); //start conversions
@@ -111,7 +142,12 @@ void initControlLoopTimer(void){
   TCCR1B |= (1 << CS12) | (0 << CS10); //prescaler F_CPU/256
   TCCR1B |= (1 << WGM12); // Configure timer 1 for CTC mode
   TIMSK1 |= (1 << OCIE1A); // Enable CTC interrupt
-  OCR1A = 31294; // 1 Hz with 256 prescaler (double spec value, not sure why)
+  // 20 Hz or 1 Hz with 256 prescaler (double spec value, not sure why)
+  #if DEBUG
+    OCR1A = 31280;
+  #else
+    OCR1A = 1564;
+  #endif
   sei();
 }
 //initialize manual control GPIO
@@ -120,6 +156,33 @@ void initGPIO(void){
   PORTC |= (1 << PC0) | (1 << PC1);
   PORTB |= (1 << PB2);
 
+  //led outputs
+  DDRD |= (1 << 4) | (1 << 3);
+}
+
+void printVoltage(){
+  uint32_t ADC_val = ADCL | (ADCH << 8);
+  uint16_t millivolts = (ADC_val*4262) >> 8;
+  char str[30];
+  sprintf(str, "Battery Voltage: %u.%1.uV\n", millivolts/1000, (millivolts % 1000)/100);
+  printString(str);
+}
+
+void printDepth(){
+  char str[20];
+  sprintf(str, "Depth: %u cm\n", depth);
+  printString(str);
+}
+
+void printControlVars(){
+  char str[60];
+  sprintf(str, "Control loop variables:\n  kp:%u\n  ki:%u\n  kd:%u\n", kp, ki, kd);
+  printString(str);
+}
+
+void getControlVar(char str[3], uint8_t *k){
+  printString(str);
+  *k = getNumber();
 }
 
 /* MAIN */
@@ -127,13 +190,61 @@ int main(void) {
 
   //initializations
   sei(); //  Enable global interrupts
-  initDebug();
-  initControlLoopTimer();
+  #if DEBUG
+    initDebug();
+  #endif
+
+  initGPIO();
+  initADC();
   initPWMTimer();
+  initControlLoopTimer();
   initMS5837(MS5837_calibration_data);
 
   //free-running polling loop
   while (1) {
+    #if DEBUG
+    char_code = receiveByte();
+    switch(char_code){
+      case 'b':
+        printVoltage();
+        break;
+      case 'k':
+        printControlVars();
+        break;
+      case 'P': //read kP
+        getControlVar("kp=", &kp);
+        break;
+      case 'I': //read kI
+        getControlVar("ki=", &ki);
+        break;
+      case 'D': //read kD
+        getControlVar("kd=", &kd);
+        break;
+      case 'd':
+        printDepth();
+        break;
+      case 'S':
+        printString("Setpoint=");
+        setpoint = getWord();
+        break;
+      case 'O':
+        printString("Position=");
+        OCR0B = getNumber();
+        break;
+      case 's': //stop/start
+        if((SREG&0x80)==0x80){ //interrupts enabled
+          cli();
+          printString("stop\n");
+        } else {
+          printString("start\n");
+          sei();
+
+        }
+        break;
+      default:
+        break;
+    }
+    #endif
   }
   return 0;
 }

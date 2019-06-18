@@ -37,6 +37,8 @@ void printByte(uint8_t byte);
 void printWord(uint16_t word);
         /* Prints a word (16-bits) out as its 5-digit ascii equivalent */
 
+void printSignedWord(int16_t);
+
 void printBinaryByte(uint8_t byte);
                                      /* Prints a byte out in 1s and 0s */
 char nibbleToHex(uint8_t nibble);
@@ -46,3 +48,7 @@ void printHexByte(uint8_t byte);
 uint8_t getNumber(void);
 /* takes in up to three ascii digits,
  converts them to a byte when press enter */
+
+uint16_t getWord(void);
+
+ void println(void);
