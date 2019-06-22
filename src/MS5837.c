@@ -12,6 +12,10 @@
 #define MS5837_CONVERT_D1_8192    0x4A
 #define MS5837_CONVERT_D2_8192    0x5A
 
+#define ATMOSPHERIC_PRESSURE 101260 //Pa (kg/ms^2)
+#define FLUID_DENSITY 997 //kg/cm^3
+#define G 9.81 //m/s^2
+
 //this function sets up the MS5837 and reads and checks it's calibration data
 //it takes an array of 7 16-bit words to return the calibration data in.
 uint8_t initMS5837(uint16_t calib_data[]){
@@ -24,7 +28,7 @@ uint8_t initMS5837(uint16_t calib_data[]){
   _delay_ms(10);
 
   //read calibration data drom device
-  printString("Calibration Data: ");
+  printString("Calibration Data: \n");
   for(uint8_t i = 0; i < 7; i++){
     i2c_start(MS5837_ADDR);
     i2c_write(MS5837_PROM_READ + i*2);
@@ -33,12 +37,13 @@ uint8_t initMS5837(uint16_t calib_data[]){
     i2c_start(MS5837_ADDR | I2C_READ);
     calib_data[i] = (i2c_read_ack() << 8 ) | i2c_read_nack();
     i2c_stop();
-    printHexByte(calib_data[i] >> 8);
-    printHexByte(calib_data[i]);
+    char str[20];
+    sprintf(str, "[C%u] %X\n", i, calib_data[i]);
+    printString(str);
   }
 
   //check CRC on calibration data
-  printString("\nCRC Check: ");
+  printString("CRC: ");
 
   uint8_t crcRead = calib_data[0] >> 12;
   uint8_t crcCalculated = crc4(calib_data);
@@ -86,26 +91,26 @@ uint32_t read_MS5837_depth(uint16_t C[]){
   uint32_t D1 = conversion(MS5837_CONVERT_D1_8192);
   uint32_t D2 = conversion(MS5837_CONVERT_D2_8192);
 
-
-  int32_t dT = 0;
+  uint32_t dT = 0;
   int32_t T = 0;
   int32_t P = 0;
   int64_t SENS = 0;
   int64_t OFF = 0;
-  int32_t SENSi = 0;
-  int32_t OFFi = 0;
-  int32_t Ti = 0;
-  int64_t OFF2 = 0;
-  int64_t SENS2 = 0;
+  //int32_t SENSi = 0;
+  //int32_t OFFi = 0;
+  //int32_t Ti = 0;
+  //int64_t OFF2 = 0;
+  //int64_t SENS2 = 0;
 
-  dT = D2-(uint32_t)C[5]*256L;
+
+  dT = D2 - ((uint32_t)C[5])*256L;
   T = 2000L+(int64_t)dT*C[6]/8388608LL;
 
   SENS = (int64_t)C[1]*32768l+((int64_t)C[3]*dT)/256l;
 	OFF = (int64_t)C[2]*65536l+((int64_t)C[4]*dT)/128l;
 	P = (D1*SENS/(2097152l)-OFF)/(8192l)*10;
 
-  return P;
+  return (P - ATMOSPHERIC_PRESSURE)*100/(G*FLUID_DENSITY); // in cm
 }
 
 //CRC check on MS5837 data

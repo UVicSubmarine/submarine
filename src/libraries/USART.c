@@ -95,7 +95,18 @@ void printWord(uint16_t word) {
   transmitByte('0' + (word % 10));                             /* Ones */
 }
 
-void printSignedWord(int16_t word) {
+void printLong(uint32_t word){
+  transmitByte('0' + (word / 1000000));                 /* Ten-thousands */
+  transmitByte('0' + ((word / 100000) % 10));                 /* Ten-thousands */
+  transmitByte('0' + ((word / 100000) % 10));                 /* Ten-thousands */
+  transmitByte('0' + ((word / 10000) % 10));                 /* Ten-thousands */
+  transmitByte('0' + ((word / 1000) % 10));               /* Thousands */
+  transmitByte('0' + ((word / 100) % 10));                 /* Hundreds */
+  transmitByte('0' + ((word / 10) % 10));                      /* Tens */
+  transmitByte('0' + (word % 10));                             /* Ones */
+}
+
+void printSignedWord(int32_t word) {
   if (word == 0){
     printString("0");
   } else {
@@ -103,7 +114,7 @@ void printSignedWord(int16_t word) {
       word = 0 - word;
       printString("-");
     }
-    printByte((uint8_t)word);
+    printWord((uint16_t)word);
   }
 }
 

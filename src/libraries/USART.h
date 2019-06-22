@@ -37,7 +37,7 @@ void printByte(uint8_t byte);
 void printWord(uint16_t word);
         /* Prints a word (16-bits) out as its 5-digit ascii equivalent */
 
-void printSignedWord(int16_t);
+void printSignedWord(int32_t);
 
 void printBinaryByte(uint8_t byte);
                                      /* Prints a byte out in 1s and 0s */

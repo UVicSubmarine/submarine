@@ -10,7 +10,6 @@
 
 //Submarine Controller
 
-
 /* LOGISTICAL PREAMBLE */
 
 #define VERSION "v0.1"
@@ -30,7 +29,13 @@ void breakpoint(void){
 }
 
 /* DECALARATIONS */
-#define LAC_PWM_TOP 125 //top value for PWM counter
+#define LAC_PWM_TOP 127 //top value for PWM counter
+
+//control loop definitions
+#define ERROR_SATURATION 1000
+#define LOW_PASS_COEF 2
+#define MAX_AUTO_ANGLE 30 //+/- midpoint
+#define MAX_MAN_ANGLE 60 //+/- midpoint
 
 /* GLOBAL VARIABLES */
 uint16_t MS5837_calibration_data[7];
@@ -42,8 +47,11 @@ uint8_t char_code = 0;
 uint8_t kp = 10;
 uint8_t ki = 0;
 uint8_t kd = 0;
-uint16_t depth = 500;
-uint16_t setpoint = 200;
+uint32_t depth = 500;
+uint16_t setpoint = 500;
+int16_t error = 0;
+int16_t prev_error = 0;
+uint8_t midpoint = 60;
 
 /*INTERRUPT SERVICE ROUTINES*/
 //control loop interrupt routine
@@ -59,43 +67,36 @@ ISR(TIMER1_COMPA_vect){
     PORTD &= ~(1 << 4);
   }
 
-  //depth = 600; //read_MS5837_depth();
+  //get depth
+  depth = read_MS5837_depth(MS5837_calibration_data);
 
   //automatic/manual modes
   if((status & 0x04) == 0x04){ //automatic mode
 
-    int32_t error = setpoint - depth;
+    prev_error = error;
+    error = setpoint - depth;
+
+    //error saturation
+    if(error > ERROR_SATURATION) error = ERROR_SATURATION;
+    else if(error < -ERROR_SATURATION) error = -ERROR_SATURATION;
+
+    //low pass filter (1/4 new input);
+    error = (error + (prev_error * 3)) >> 2;
+
 
     int32_t output;
-
-    if(error >= 0){
-      output = 62 + ((error*kp) >> 7);
-    } else if(1) {
-      output = 62 - (((abs(error)*kp)) >> 7);
-    }
-
-    printSignedWord(output);
-    println();
-
-    //trim output for saturation
-    /*if(output > 125){
-      output = 25;
-    } else if(output < 0){
-      output = 0;
-    }*/
-
-    printSignedWord(output);
-    println();
+    //control loop
+    output = midpoint + ((error*kp) >> 7) + (((error - prev_error)*kd) >> 7);
 
     OCR0B = output;
 
-
+    //manual mode
   } else if ((status & 0x07) == 0x01){ //up
-    OCR0B = 120;
+    OCR0B = fmin(midpoint + MAX_MAN_ANGLE, LAC_PWM_TOP);
   } else if ((status & 0x07) == 0x02){ //down
-    OCR0B = 0;
+    OCR0B = fmax(midpoint - MAX_MAN_ANGLE, 0);
   } else if((status & 0x07) == 0x03){ //neutral
-    OCR0B = 60;
+    OCR0B = midpoint;
   }
 
   PORTB &= ~(1 << PB0);
@@ -145,10 +146,12 @@ void initControlLoopTimer(void){
   // 20 Hz or 1 Hz with 256 prescaler (double spec value, not sure why)
   #if DEBUG
     OCR1A = 31280;
+    cli();
   #else
     OCR1A = 1564;
+    sei();
   #endif
-  sei();
+
 }
 //initialize manual control GPIO
 void initGPIO(void){
@@ -170,7 +173,7 @@ void printVoltage(){
 
 void printDepth(){
   char str[20];
-  sprintf(str, "Depth: %u cm\n", depth);
+  sprintf(str, "Depth: %li cm\n", depth);
   printString(str);
 }
 
@@ -189,7 +192,6 @@ void getControlVar(char str[3], uint8_t *k){
 int main(void) {
 
   //initializations
-  sei(); //  Enable global interrupts
   #if DEBUG
     initDebug();
   #endif
@@ -241,6 +243,9 @@ int main(void) {
 
         }
         break;
+      case 'm':
+        printString("Set midpoint [50,70]");
+        midpoint = getNumber();
       default:
         break;
     }
