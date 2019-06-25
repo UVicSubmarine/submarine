@@ -12,7 +12,7 @@
 #define MS5837_CONVERT_D1_8192    0x4A
 #define MS5837_CONVERT_D2_8192    0x5A
 
-#define ATMOSPHERIC_PRESSURE 101260 //Pa (kg/ms^2)
+#define ATMOSPHERIC_PRESSURE 99240 //Pa (kg/ms^2)
 #define FLUID_DENSITY 997 //kg/cm^3
 #define G 9.81 //m/s^2
 
@@ -110,7 +110,7 @@ uint32_t read_MS5837_depth(uint16_t C[]){
 	OFF = (int64_t)C[2]*65536l+((int64_t)C[4]*dT)/128l;
 	P = (D1*SENS/(2097152l)-OFF)/(8192l)*10;
 
-  return (P - ATMOSPHERIC_PRESSURE)*100/(G*FLUID_DENSITY); // in cm
+  return (P - ATMOSPHERIC_PRESSURE)*100/(G*FLUID_DENSITY); // in
 }
 
 //CRC check on MS5837 data

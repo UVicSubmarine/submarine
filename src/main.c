@@ -13,7 +13,7 @@
 /* LOGISTICAL PREAMBLE */
 
 #define VERSION "v0.1"
-#define DEBUG 1 //set debug mode, enabling serial communication
+#define DEBUG 0 //set debug mode, enabling serial communication
 //#define F_CPU 8000000UL
 
 //breakpoint function for debugging
@@ -34,8 +34,8 @@ void breakpoint(void){
 //control loop definitions
 #define ERROR_SATURATION 1000
 #define LOW_PASS_COEF 2
-#define MAX_AUTO_ANGLE 30 //+/- midpoint
-#define MAX_MAN_ANGLE 60 //+/- midpoint
+#define MAX_AUTO_ANGLE 40 //+/- midpoint
+#define MANUAL_ANGLE 40
 
 /* GLOBAL VARIABLES */
 uint16_t MS5837_calibration_data[7];
@@ -48,7 +48,7 @@ uint8_t kp = 10;
 uint8_t ki = 0;
 uint8_t kd = 0;
 uint32_t depth = 500;
-uint16_t setpoint = 500;
+uint16_t setpoint = 200;
 int16_t error = 0;
 int16_t prev_error = 0;
 uint8_t midpoint = 60;
@@ -70,11 +70,13 @@ ISR(TIMER1_COMPA_vect){
   //get depth
   depth = read_MS5837_depth(MS5837_calibration_data);
 
+  int32_t output = midpoint;
+
   //automatic/manual modes
   if((status & 0x04) == 0x04){ //automatic mode
 
     prev_error = error;
-    error = setpoint - depth;
+    error = depth - setpoint;
 
     //error saturation
     if(error > ERROR_SATURATION) error = ERROR_SATURATION;
@@ -83,21 +85,25 @@ ISR(TIMER1_COMPA_vect){
     //low pass filter (1/4 new input);
     error = (error + (prev_error * 3)) >> 2;
 
-
-    int32_t output;
+    int16_t p_term = ((error*kp) >> 7);
+    int16_t d_term = (((error - prev_error)*kd) >> 7);
     //control loop
-    output = midpoint + ((error*kp) >> 7) + (((error - prev_error)*kd) >> 7);
+    output = midpoint + p_term + d_term;
 
-    OCR0B = output;
+    //set saturation angles
+    output = fmin(output, midpoint + MAX_AUTO_ANGLE);
+    output = fmax(output, midpoint - MAX_AUTO_ANGLE);
 
     //manual mode
   } else if ((status & 0x07) == 0x01){ //up
-    OCR0B = fmin(midpoint + MAX_MAN_ANGLE, LAC_PWM_TOP);
+    output = fmin(midpoint + MANUAL_ANGLE, LAC_PWM_TOP);
   } else if ((status & 0x07) == 0x02){ //down
-    OCR0B = fmax(midpoint - MAX_MAN_ANGLE, 0);
+    output = fmax(midpoint - MANUAL_ANGLE, 0);
   } else if((status & 0x07) == 0x03){ //neutral
-    OCR0B = midpoint;
+    output = midpoint;
   }
+
+  OCR0B = output;
 
   PORTB &= ~(1 << PB0);
 }
@@ -107,7 +113,6 @@ ISR(TIMER1_COMPA_vect){
 void initDebug(void){
     DDRB |= (1<<PB0);
     PORTB |= (1 << PB0);
-    initUSART();
     printString("\n\nSubmarine Controller\n");
     printString(VERSION);
     printString("\nPress any key:\n");
@@ -148,7 +153,7 @@ void initControlLoopTimer(void){
     OCR1A = 31280;
     cli();
   #else
-    OCR1A = 1564;
+    OCR1A = 3128;
     sei();
   #endif
 
@@ -196,15 +201,14 @@ int main(void) {
     initDebug();
   #endif
 
+  initUSART();
   initGPIO();
   initADC();
   initPWMTimer();
   initControlLoopTimer();
   initMS5837(MS5837_calibration_data);
-
   //free-running polling loop
   while (1) {
-    #if DEBUG
     char_code = receiveByte();
     switch(char_code){
       case 'b':
@@ -246,10 +250,10 @@ int main(void) {
       case 'm':
         printString("Set midpoint [50,70]");
         midpoint = getNumber();
+        break;
       default:
         break;
     }
-    #endif
   }
   return 0;
 }
